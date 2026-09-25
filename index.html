@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>بازی دوز سه‌بعدی مدرن</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://v1.fontapi.ir/css/Vazirmatn');
+    
+    body {
+      font-family: 'Vazirmatn', sans-serif;
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+      min-height: 100vh;
+      user-select: none;
+    }
+
+    /* 3D Scene Perspective */
+    .perspective-container {
+      perspective: 1000px;
+    }
+
+    .board-3d {
+      transform-style: preserve-3d;
+      transform: rotateX(28deg) rotateZ(-18deg);
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .board-3d:hover {
+      transform: rotateX(22deg) rotateZ(-12deg);
+    }
+
+    /* 3D Tile Stack */
+    .tile-3d {
+      position: relative;
+      transform-style: preserve-3d;
+      transition: all 0.2s ease;
+      background: #ffffff;
+      box-shadow: 
+        -4px 4px 0px #cbd5e1,
+        -8px 8px 15px rgba(0, 0, 0, 0.08);
+      border-radius: 16px;
+    }
+
+    .tile-3d:hover:not(.occupied) {
+      transform: translateZ(8px) translateY(-4px);
+      box-shadow: 
+        -6px 10px 0px #94a3b8,
+        -12px 16px 20px rgba(0, 0, 0, 0.12);
+      background: #f8fafc;
+    }
+
+    .tile-3d:active:not(.occupied) {
+      transform: translateZ(2px) translateY(-1px);
+      box-shadow: 
+        -2px 2px 0px #cbd5e1,
+        -4px 4px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Piece Animations */
+    .piece-x, .piece-o {
+      transform-style: preserve-3d;
+      animation: dropPiece 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes dropPiece {
+      0% {
+        opacity: 0;
+        transform: translateZ(60px) scale(1.3);
+      }
+      100% {
+        opacity: 1;
+        transform: translateZ(12px) scale(1);
+      }
+    }
+
+    /* Custom 3D Shapes */
+    .shape-x-arm {
+      position: absolute;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      border-radius: 6px;
+      box-shadow: -2px 3px 6px rgba(37, 99, 235, 0.3);
+    }
+
+    .shape-o-ring {
+      width: 52px;
+      height: 52px;
+      border: 10px solid #d97706;
+      border-radius: 50%;
+      background: transparent;
+      box-shadow: 
+        -2px 3px 6px rgba(217, 119, 6, 0.25),
+        inset -1px 2px 4px rgba(0,0,0,0.15);
+    }
+
+    .winning-tile {
+      background: #fef3c7 !important;
+      animation: pulseWin 1s infinite alternate ease-in-out;
+    }
+
+    @keyframes pulseWin {
+      0% { transform: translateZ(12px); }
+      100% { transform: translateZ(24px); }
+    }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-between p-4 md:p-6 text-slate-800">
+
+  <!-- Header & Title -->
+  <header class="text-center my-2">
+    <h1 class="text-3xl md:text-4xl font-extrabold text-slate-800 tracking-tight">دوز سه‌بعدی مدرن</h1>
+    <p class="text-slate-500 text-sm mt-1">تجربه بازی فکری بدون افکت‌های شلوغ</p>
+  </header>
+
+  <!-- Controls & Settings -->
+  <div class="w-full max-w-md bg-white/80 backdrop-blur-md p-4 rounded-2xl shadow-sm border border-slate-200/80 mb-4 flex flex-col gap-3">
+    
+    <!-- Mode Selector -->
+    <div class="flex bg-slate-100 p-1 rounded-xl text-xs font-bold">
+      <button id="mode-ai" onclick="setGameMode('ai')" class="flex-1 py-2 rounded-lg transition-all bg-white text-blue-600 shadow-sm">
+        🤖 بازی با هوش مصنوعی
+      </button>
+      <button id="mode-p2p" onclick="setGameMode('p2p')" class="flex-1 py-2 rounded-lg transition-all text-slate-600 hover:text-slate-900">
+        👥 دو نفره (یک دستگاه)
+      </button>
+    </div>
+
+    <!-- AI Difficulty -->
+    <div id="ai-difficulty-container" class="flex items-center justify-between text-xs px-1">
+      <span class="text-slate-500 font-medium">سختی هوش مصنوعی:</span>
+      <div class="flex gap-1">
+        <button onclick="setDifficulty('easy')" id="diff-easy" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">آسان</button>
+        <button onclick="setDifficulty('medium')" id="diff-medium" class="px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 font-bold">متوسط</button>
+        <button onclick="setDifficulty('hard')" id="diff-hard" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium">غیرقابل شکست</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Score Board -->
+  <div class="w-full max-w-md flex items-center justify-between gap-4 mb-4">
+    <div class="flex-1 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center font-black text-xl">X</div>
+      <div>
+        <div class="text-xs text-slate-400 font-bold" id="label-player-x">بازیکن ۱</div>
+        <div class="text-lg font-extrabold text-slate-800" id="score-x">0</div>
+      </div>
+    </div>
+
+    <div class="flex-1 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-sm flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-black text-xl">O</div>
+      <div>
+        <div class="text-xs text-slate-400 font-bold" id="label-player-o">هوش مصنوعی</div>
+        <div class="text-lg font-extrabold text-slate-800" id="score-o">0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Indicator -->
+  <div id="status-text" class="text-center font-bold text-slate-700 h-6 mb-2 text-sm">
+    نوبت بازیکن X
+  </div>
+
+  <!-- 3D Game Board Viewport -->
+  <div class="perspective-container my-auto py-6">
+    <div id="board" class="board-3d grid grid-cols-3 gap-4 bg-slate-200/80 p-4 rounded-3xl border border-slate-300/60 shadow-2xl">
+      <!-- 9 Tiles generated dynamically -->
+    </div>
+  </div>
+
+  <!-- Bottom Actions -->
+  <div class="mt-6 flex gap-3">
+    <button onclick="resetGame()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95 text-sm flex items-center gap-2">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+      شروع مجدد
+    </button>
+    <button onclick="resetScores()" class="px-4 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-medium transition-all text-sm">
+      صفر کردن امتیازها
+    </button>
+  </div>
+
+  <script>
+    // Game State
+    let boardState = Array(9).fill(null);
+    let currentPlayer = 'X';
+    let gameActive = true;
+    let gameMode = 'ai'; // 'ai' or 'p2p'
+    let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
+    let scores = { X: 0, O: 0 };
+
+    const winningCombinations = [
+      [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+      [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+      [0, 4, 8], [2, 4, 6]             // Diagonals
+    ];
+
+    // DOM Elements
+    const boardEl = document.getElementById('board');
+    const statusTextEl = document.getElementById('status-text');
+    const scoreXEl = document.getElementById('score-x');
+    const scoreOEl = document.getElementById('score-o');
+    const labelPlayerOEl = document.getElementById('label-player-o');
+    const aiDiffContainer = document.getElementById('ai-difficulty-container');
+
+    // Initialize Board UI
+    function createBoard() {
+      boardEl.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'tile-3d w-20 h-20 md:w-24 md:h-24 flex items-center justify-center cursor-pointer';
+        tile.dataset.index = i;
+        tile.addEventListener('click', () => handleTileClick(i));
+        boardEl.appendChild(tile);
+      }
+    }
+
+    // Set Mode
+    function setGameMode(mode) {
+      gameMode = mode;
+      document.getElementById('mode-ai').className = `flex-1 py-2 rounded-lg transition-all ${mode === 'ai' ? 'bg-white text-blue-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'}`;
+      document.getElementById('mode-p2p').className = `flex-1 py-2 rounded-lg transition-all ${mode === 'p2p' ? 'bg-white text-blue-600 shadow-sm font-bold' : 'text-slate-600 hover:text-slate-900'}`;
+
+      if (mode === 'ai') {
+        labelPlayerOEl.textContent = 'هوش مصنوعی';
+        aiDiffContainer.classList.remove('hidden');
+      } else {
+        labelPlayerOEl.textContent = 'بازیکن ۲';
+        aiDiffContainer.classList.add('hidden');
+      }
+      resetGame();
+    }
+
+    // Set Difficulty
+    function setDifficulty(diff) {
+      aiDifficulty = diff;
+      ['easy', 'medium', 'hard'].forEach(d => {
+        const btn = document.getElementById(`diff-${d}`);
+        if (d === diff) {
+          btn.className = 'px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 font-bold';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium';
+        }
+      });
+      resetGame();
+    }
+
+    // Tile Click Handler
+    function handleTileClick(index) {
+      if (!gameActive || boardState[index] !== null) return;
+      if (gameMode === 'ai' && currentPlayer === 'O') return;
+
+      makeMove(index, currentPlayer);
+
+      if (gameActive && gameMode === 'ai' && currentPlayer === 'O') {
+        statusTextEl.textContent = 'هوش مصنوعی در حال فکر کردن...';
+        setTimeout(makeAIMove, 400);
+      }
+    }
+
+    // Place Piece on Board
+    function makeMove(index, player) {
+      boardState[index] = player;
+      const tile = boardEl.children[index];
+      tile.classList.add('occupied');
+
+      if (player === 'X') {
+        tile.innerHTML = `
+          <div class="piece-x relative w-12 h-12 flex items-center justify-center">
+            <div class="shape-x-arm w-12 h-3 rotate-45"></div>
+            <div class="shape-x-arm w-12 h-3 -rotate-45"></div>
+          </div>
+        `;
+      } else {
+        tile.innerHTML = `
+          <div class="piece-o flex items-center justify-center">
+            <div class="shape-o-ring"></div>
+          </div>
+        `;
+      }
+
+      checkGameResult();
+    }
+
+    // AI Logic
+    function makeAIMove() {
+      if (!gameActive) return;
+
+      let moveIndex;
+
+      if (aiDifficulty === 'easy') {
+        moveIndex = getRandomMove();
+      } else if (aiDifficulty === 'medium') {
+        // 50% chance optimal, 50% random
+        moveIndex = Math.random() > 0.5 ? getBestMove() : getRandomMove();
+      } else {
+        // Unbeatable Minimax
+        moveIndex = getBestMove();
+      }
+
+      if (moveIndex !== null && moveIndex !== undefined) {
+        makeMove(moveIndex, 'O');
+      }
+    }
+
+    function getRandomMove() {
+      const emptyIndices = boardState
+        .map((val, idx) => val === null ? idx : null)
+        .filter(val => val !== null);
+      return emptyIndices.length > 0 ? emptyIndices[Math.floor(Math.random() * emptyIndices.length)] : null;
+    }
+
+    function getBestMove() {
+      let bestScore = -Infinity;
+      let move = null;
+
+      for (let i = 0; i < 9; i++) {
+        if (boardState[i] === null) {
+          boardState[i] = 'O';
+          let score = minimax(boardState, 0, false);
+          boardState[i] = null;
+          if (score > bestScore) {
+            bestScore = score;
+            move = i;
+          }
+        }
+      }
+      return move !== null ? move : getRandomMove();
+    }
+
+    // Minimax Algorithm
+    function minimax(board, depth, isMaximizing) {
+      let winner = checkWinnerForMinimax(board);
+      if (winner === 'O') return 10 - depth;
+      if (winner === 'X') return depth - 10;
+      if (board.every(cell => cell !== null)) return 0;
+
+      if (isMaximizing) {
+        let bestScore = -Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (board[i] === null) {
+            board[i] = 'O';
+            let score = minimax(board, depth + 1, false);
+            board[i] = null;
+            bestScore = Math.max(score, bestScore);
+          }
+        }
+        return bestScore;
+      } else {
+        let bestScore = Infinity;
+        for (let i = 0; i < 9; i++) {
+          if (board[i] === null) {
+            board[i] = 'X';
+            let score = minimax(board, depth + 1, true);
+            board[i] = null;
+            bestScore = Math.min(score, bestScore);
+          }
+        }
+        return bestScore;
+      }
+    }
+
+    function checkWinnerForMinimax(board) {
+      for (let combo of winningCombinations) {
+        const [a, b, c] = combo;
+        if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+          return board[a];
+        }
+      }
+      return null;
+    }
+
+    // Check Game Winner or Draw
+    function checkGameResult() {
+      let roundWon = false;
+      let winningCombo = null;
+
+      for (let combo of winningCombinations) {
+        const [a, b, c] = combo;
+        if (boardState[a] && boardState[a] === boardState[b] && boardState[a] === boardState[c]) {
+          roundWon = true;
+          winningCombo = combo;
+          break;
+        }
+      }
+
+      if (roundWon) {
+        gameActive = false;
+        highlightWinningTiles(winningCombo);
+        scores[currentPlayer]++;
+        updateScoreDisplay();
+
+        const winnerName = (currentPlayer === 'X') 
+          ? (gameMode === 'ai' ? 'شما پیروز شدید! 🎉' : 'بازیکن ۱ پیروز شد! 🎉')
+          : (gameMode === 'ai' ? 'هوش مصنوعی پیروز شد! 🤖' : 'بازیکن ۲ پیروز شد! 🎉');
+
+        statusTextEl.textContent = winnerName;
+        return;
+      }
+
+      if (!boardState.includes(null)) {
+        gameActive = false;
+        statusTextEl.textContent = 'بازی مساوی شد! 🤝';
+        return;
+      }
+
+      // Switch turn
+      currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+      updateStatusText();
+    }
+
+    function highlightWinningTiles(combo) {
+      combo.forEach(index => {
+        boardEl.children[index].classList.add('winning-tile');
+      });
+    }
+
+    function updateStatusText() {
+      if (gameMode === 'ai') {
+        statusTextEl.textContent = currentPlayer === 'X' ? 'نوبت شما (X)' : 'نوبت هوش مصنوعی (O)...';
+      } else {
+        statusTextEl.textContent = `نوبت بازیکن ${currentPlayer}`;
+      }
+    }
+
+    function updateScoreDisplay() {
+      scoreXEl.textContent = scores.X;
+      scoreOEl.textContent = scores.O;
+    }
+
+    function resetGame() {
+      boardState = Array(9).fill(null);
+      currentPlayer = 'X';
+      gameActive = true;
+      updateStatusText();
+      createBoard();
+    }
+
+    function resetScores() {
+      scores = { X: 0, O: 0 };
+      updateScoreDisplay();
+      resetGame();
+    }
+
+    // Initialize on Load
+    createBoard();
+  </script>
+</body>
+</html>
